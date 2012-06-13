@@ -144,12 +144,15 @@ struct DESFireVersion {
   uint8_t   HwVendorId;
   uint8_t   SwVendorId;
 
+  /* msb byte major, lsb byte minor */
   uint16_t  HwVersion;
   uint16_t  SwVersion;
 
+  /* storage size is 2 << StorgeExponent */
   uint8_t   HwStorageExponent;
   uint8_t   SwStorageExponent;
 
+  /* SerialNumber is the card UID, batch number the production batch number */
   uint8_t   SerialNumber[7];
   uint8_t   BatchNumber[5];
 
