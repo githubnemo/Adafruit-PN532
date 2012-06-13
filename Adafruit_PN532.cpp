@@ -542,6 +542,97 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
 }
 
 
+
+/**************************************************************************/
+/*!
+    Get all application IDs (MIFARE_DESFIRE_MAX_AIDS at max.) from the
+    DESFire chip and store them in the given byte array.
+    Note that each application ID consists of 3 byte, so you need to
+    allocate MIFARE_DESFIRE_MAX_AIDS*3 byte.
+
+    The number of elements (not IDs!) is stored in the len parameter.
+
+    @param  ids             Target for the found IDs
+    @param  len             Length of the data put into ids
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_GetApplicationIDs(uint8_t* ids, uint8_t* len) {
+  uint8_t found_ids = 0, payload_length = 0;
+
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+  pn532_packetbuffer[1] = 1;          /* Card number */
+  pn532_packetbuffer[2] = 0x6a;
+
+  /* Send the command */
+  if (! sendCommandCheckAck(pn532_packetbuffer, 3))
+  {
+    #ifdef MIFAREDEBUG
+    Serial.println("Failed to receive ACK for read command first");
+    #endif
+    return 0;
+  }
+
+  /* The response may contain 0 to 19 AIDs + Preamble */
+  readspidata(pn532_packetbuffer, 19*3+8);
+
+  if(pn532_packetbuffer[7] != 0x00) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Communication error.");
+    #endif
+    return 0;
+  }
+
+  /* length defines the length from TFI (6. byte) to PD[n] (third last byte) */
+  payload_length = pn532_packetbuffer[3];
+
+  /* skip 9 bytes preamble + command data, 4 of the skipped are in len */
+  memcpy(ids, pn532_packetbuffer+9, payload_length-4);
+
+  found_ids += payload_length-4;
+
+  #ifdef MIFAREDEBUG
+  Serial.print("First AID packet: ");
+  Adafruit_PN532::PrintHex(pn532_packetbuffer, 19*3+8);
+  #endif
+
+  /* no more AIDs */
+  if(pn532_packetbuffer[8] != 0xAF) {
+    goto success;
+  }
+
+  /* request the rest of the AIDs */
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+  pn532_packetbuffer[1] = 1;          /* Card number */
+  pn532_packetbuffer[2] = 0xaf;
+
+  /* Read the first of three response packets */
+  readspidata(pn532_packetbuffer, 7*3+8);
+
+  if(pn532_packetbuffer[7] != 0x00) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Communication error.");
+    #endif
+    return 0;
+  }
+
+  payload_length = pn532_packetbuffer[3];
+
+  memcpy(ids+found_ids, pn532_packetbuffer+9, pn532_packetbuffer[3]-4);
+  found_ids += pn532_packetbuffer[3]-4;
+
+  #ifdef MIFAREDEBUG
+  Serial.print("Second AID packet: ");
+  Adafruit_PN532::PrintHex(pn532_packetbuffer, 7*3+8);
+  #endif
+
+success:
+  *len = found_ids;
+  return 1;
+}
+
+
 /**************************************************************************/
 /*!
     Queries the version and other misc. data of a DESFire MIFARE chip.

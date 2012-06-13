@@ -138,6 +138,7 @@
 #define PN532_GPIO_P35                      (5)
 
 
+#define MIFARE_DESFIRE_MAX_AIDS             (26)
 
 
 struct DESFireVersion {
@@ -188,6 +189,7 @@ class Adafruit_PN532{
 
   // Mifare DESFire functions
   uint8_t desfire_GetVersion(DESFireVersion* v);
+  uint8_t desfire_GetApplicationIDs(uint8_t* ids, uint8_t* len);
 
   // Mifare Ultralight functions
   uint8_t mifareultralight_ReadPage (uint8_t page, uint8_t * buffer);
