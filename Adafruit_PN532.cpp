@@ -541,6 +541,61 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
   return 1;
 }
 
+/**************************************************************************/
+/*!
+    Get all file IDs of the currently selected application from a DESFire
+    chip. There at at max. MIFARE_DESFIRE_MAX_FILEIDS file IDs, each one
+    byte in size.
+
+    The number of elements is stored in the len parameter.
+
+    @param  ids             Target for the found IDs
+    @param  len             Length of the data put into ids
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_GetFileIDs(uint8_t* ids, uint8_t* len) {
+  uint8_t payload_length = 0;
+
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+  pn532_packetbuffer[1] = 1;          /* Card number */
+  pn532_packetbuffer[2] = 0x6f;
+
+  /* Send the command */
+  if (! sendCommandCheckAck(pn532_packetbuffer, 3))
+  {
+    #ifdef MIFAREDEBUG
+    Serial.println("Failed to receive ACK for read command first");
+    #endif
+    return 0;
+  }
+
+  /* The response may contain 0 to 16 file IDs + Preamble */
+  readspidata(pn532_packetbuffer, 16+8);
+
+  if(pn532_packetbuffer[7] != 0x00) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Communication error.");
+    #endif
+    return 0;
+  }
+
+  /* length defines the length from TFI (6. byte) to PD[n] (third last byte) */
+  payload_length = pn532_packetbuffer[3];
+
+  /* skip 9 bytes preamble + command data, 4 of the skipped are in len */
+  memcpy(ids, pn532_packetbuffer+9, payload_length-4);
+
+  *len = payload_length-4;
+
+  #ifdef MIFAREDEBUG
+  Serial.print("First FID packet: ");
+  Adafruit_PN532::PrintHex(pn532_packetbuffer, 19*3+8);
+  #endif
+
+  return 1;
+}
 
 
 /**************************************************************************/
