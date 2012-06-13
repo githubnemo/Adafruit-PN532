@@ -541,6 +541,97 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
   return 1;
 }
 
+
+/**************************************************************************/
+/*!
+    Queries the version and other misc. data of a DESFire MIFARE chip.
+    See the DESFireVersion struct for details.
+
+    @param  v             Pointer to the struct to be filled.
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_GetVersion(DESFireVersion* v) {
+  const uint8_t preamble = 8;
+  const uint8_t commands[3] = {0x60, 0xAF, 0xAF};
+  const uint8_t response_size[3] = {8+preamble, 8+preamble, 16+preamble};
+
+  // GetVersion returns three results which need to be fetched.
+  for(int i=0; i < 3; i++) {
+
+      /* Prepare the command */
+      pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+      pn532_packetbuffer[1] = 1;          /* Card number */
+      pn532_packetbuffer[2] = commands[i];
+
+      /* Send the command */
+      if (! sendCommandCheckAck(pn532_packetbuffer, 3))
+      {
+        #ifdef MIFAREDEBUG
+        Serial.println("Failed to receive ACK for read command first");
+        #endif
+        return 0;
+      }
+
+      /* Read the first of three response packets */
+      readspidata(pn532_packetbuffer, response_size[i]);
+
+      if(pn532_packetbuffer[7] != 0x00) {
+        #ifdef MIFAREDEBUG
+        Serial.println("Communication error.");
+        #endif
+        return 0;
+      }
+
+      switch(i) {
+
+        // All 1 byte fields after preamble:
+        // [0xAF][vendor id][type][subtype][major ver]
+        // [minor ver][storage sz][protocol]
+        case 0:
+          v->HwVendorId = pn532_packetbuffer[preamble + 1];
+
+          v->HwVersion  = pn532_packetbuffer[preamble + 4] << 8;
+          v->HwVersion |= pn532_packetbuffer[preamble + 5];
+
+          v->HwStorageExponent = pn532_packetbuffer[preamble + 6];
+          break;
+
+        // same as case 0 only for software.
+        case 1:
+          v->SwVendorId = pn532_packetbuffer[preamble + 1];
+
+          v->SwVersion  = pn532_packetbuffer[preamble + 4] << 8;
+          v->SwVersion |= pn532_packetbuffer[preamble + 5];
+
+          v->SwStorageExponent = pn532_packetbuffer[preamble + 6];
+          break;
+
+        // 1 byte: status (0x0)
+        // 7 byte: uid
+        // 5 byte: batch no.
+        // 1 byte: calendar week
+        // 1 byte: year
+        case 2:
+          memcpy(v->SerialNumber, pn532_packetbuffer+preamble+1, 7);
+          memcpy(v->BatchNumber, pn532_packetbuffer+preamble+1+7, 5);
+
+          v->CalendarWeek = pn532_packetbuffer[preamble + 13];
+          v->Year = pn532_packetbuffer[preamble + 14];
+          break;
+      }
+
+      #ifdef MIFAREDEBUG
+      Serial.print(i); Serial.print(". packet: ");
+      Adafruit_PN532::PrintHex(pn532_packetbuffer, response_size[i]);
+      #endif
+  }
+
+  return 1;
+}
+
+
 /**************************************************************************/
 /*!
     Tries to read an entire 16-byte data block at the specified block

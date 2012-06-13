@@ -137,6 +137,28 @@
 #define PN532_GPIO_P34                      (4)
 #define PN532_GPIO_P35                      (5)
 
+
+
+
+struct DESFireVersion {
+  uint8_t   HwVendorId;
+  uint8_t   SwVendorId;
+
+  uint16_t  HwVersion;
+  uint16_t  SwVersion;
+
+  uint8_t   HwStorageExponent;
+  uint8_t   SwStorageExponent;
+
+  uint8_t   SerialNumber[7];
+  uint8_t   BatchNumber[5];
+
+  uint8_t   CalendarWeek;
+  uint8_t   Year;
+};
+
+
+
 class Adafruit_PN532{
  public:
   Adafruit_PN532(uint8_t cs, uint8_t clk, uint8_t mosi, uint8_t miso);
@@ -160,7 +182,10 @@ class Adafruit_PN532{
   uint8_t mifareclassic_WriteDataBlock (uint8_t blockNumber, uint8_t * data);
   uint8_t mifareclassic_FormatNDEF (void);
   uint8_t mifareclassic_WriteNDEFURI (uint8_t sectorNumber, uint8_t uriIdentifier, const char * url);
-  
+
+  // Mifare DESFire functions
+  uint8_t desfire_GetVersion(DESFireVersion* v);
+
   // Mifare Ultralight functions
   uint8_t mifareultralight_ReadPage (uint8_t page, uint8_t * buffer);
 
