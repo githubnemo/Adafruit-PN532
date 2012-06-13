@@ -192,6 +192,7 @@ class Adafruit_PN532{
   uint8_t desfire_GetVersion(DESFireVersion* v);
   uint8_t desfire_GetApplicationIDs(uint8_t* ids, uint8_t* len);
   uint8_t desfire_GetFileIDs(uint8_t* ids, uint8_t* len);
+  uint8_t desfire_SelectApplication(uint8_t* aid);
 
   // Mifare Ultralight functions
   uint8_t mifareultralight_ReadPage (uint8_t page, uint8_t * buffer);

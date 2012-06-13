@@ -543,6 +543,53 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
 
 /**************************************************************************/
 /*!
+    Select an application according to the given application id.
+    Due to the fact that application IDs consist of three bytes,
+    a byte array is expected. Only three bytes are read from the
+    array.
+
+    @param  aid             Application ID (3 bytes)
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_SelectApplication(uint8_t* aid) {
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+  pn532_packetbuffer[1] = 1;          /* Card number */
+  pn532_packetbuffer[2] = 0x5a;
+
+  memcpy(pn532_packetbuffer+3, aid, 3);
+
+  /* Send the command */
+  if (! sendCommandCheckAck(pn532_packetbuffer, 6))
+  {
+    #ifdef MIFAREDEBUG
+    Serial.println("Failed to receive ACK for read command");
+    #endif
+    return 0;
+  }
+
+  /* The response consists of an status byte (error or OK) + preamble */
+  readspidata(pn532_packetbuffer, 1+8);
+
+  if(pn532_packetbuffer[7] != 0x00) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Communication error.");
+    #endif
+    return 0;
+  }
+
+  #ifdef MIFAREDEBUG
+  Serial.print("Select application packet: ");
+  Adafruit_PN532::PrintHex(pn532_packetbuffer, 1+8);
+  #endif
+
+  return pn532_packetbuffer[8] == 0x0;
+}
+
+
+/**************************************************************************/
+/*!
     Get all file IDs of the currently selected application from a DESFire
     chip. There at at max. MIFARE_DESFIRE_MAX_FILEIDS file IDs, each one
     byte in size.
