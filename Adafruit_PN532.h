@@ -142,6 +142,13 @@
 #define MIFARE_DESFIRE_MAX_FILEIDS          (16)
 
 
+#define MIFARE_DESFIRE_STANDARD_FILE        (0)
+#define MIFARE_DESFIRE_BACKUP_FILE          (1)
+#define MIFARE_DESFIRE_VALUE_FILE           (2)
+#define MIFARE_DESFIRE_LINEAR_RECORD_FILE   (3)
+#define MIFARE_DESFIRE_CYCLIC_RECORD_FILE   (4)
+
+
 struct DESFireVersion {
   uint8_t   HwVendorId;
   uint8_t   SwVendorId;
@@ -161,6 +168,36 @@ struct DESFireVersion {
   uint8_t   CalendarWeek;
   uint8_t   Year;
 };
+
+
+struct DESFireFileSetting {
+  uint8_t   Type;
+  uint8_t   CommunicationSettings;
+  uint16_t  AccessRights;
+
+  union {
+    /* Standard files only have a size which is 24 bit wide */
+    struct {
+      uint32_t  FileSize;
+    };
+
+    /* Values have limits and special credit properties. */
+    struct {
+      uint32_t  LowerLimit;
+      uint32_t  UpperLimit;
+      uint32_t  LimitedCreditValue;
+      uint8_t   LimitedCreditEnabled;
+    };
+
+    /* Records */
+    struct {
+      uint32_t  RecordSize;
+      uint32_t  MaxRecords;
+      uint32_t  CurrentRecords;
+    };
+  } Settings;
+};
+
 
 
 
@@ -193,6 +230,7 @@ class Adafruit_PN532{
   uint8_t desfire_GetApplicationIDs(uint8_t* ids, uint8_t* len);
   uint8_t desfire_GetFileIDs(uint8_t* ids, uint8_t* len);
   uint8_t desfire_SelectApplication(uint8_t* aid);
+  uint8_t desfire_GetFileSettings(uint8_t fid, DESFireFileSetting* s);
 
   // Mifare Ultralight functions
   uint8_t mifareultralight_ReadPage (uint8_t page, uint8_t * buffer);

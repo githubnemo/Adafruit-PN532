@@ -543,6 +543,113 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
 
 /**************************************************************************/
 /*!
+    Read the settings for the given file. The settings depend on the type of
+    the given file. See the definition of DESFireFileSetting for the
+    different properties per file type.
+
+    What every file type has in common are the type, communication and
+    access settings.
+
+    After reading the settings, you have to distinguish the types using
+    the type field to access the advanced settings.
+
+    @param  fid             File ID
+    @param  s               Struct to write the settings to
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_GetFileSettings(uint8_t fid, DESFireFileSetting* s) {
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+  pn532_packetbuffer[1] = 1;          /* Card number */
+  pn532_packetbuffer[2] = 0xf5;
+  pn532_packetbuffer[3] = fid;
+
+  /* Send the command */
+  if (! sendCommandCheckAck(pn532_packetbuffer, 4))
+  {
+    #ifdef MIFAREDEBUG
+    Serial.println("Failed to receive ACK for read command");
+    #endif
+    return 0;
+  }
+
+  /* The response varies in size, assume worst (records, 18 byte) */
+  readspidata(pn532_packetbuffer, 18+8);
+
+  if(pn532_packetbuffer[7] != 0x00) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Communication error.");
+    #endif
+    return 0;
+  }
+
+  #ifdef MIFAREDEBUG
+  Serial.print("GetFileSettings packet: ");
+  Adafruit_PN532::PrintHex(pn532_packetbuffer, 18+8);
+  #endif
+
+  /* check length, if only one byte real payload exists, this is an error */
+  if(pn532_packetbuffer[3] <= 5) {
+    #ifdef MIFAREDEBUG
+    Serial.print("Error received: "); Serial.println(pn532_packetbuffer[8]);
+    #endif
+    return 0;
+  }
+
+  s->Type = pn532_packetbuffer[8 + 1];
+  s->CommunicationSettings = pn532_packetbuffer[8 + 2];
+  s->AccessRights  = pn532_packetbuffer[8 + 3];
+  s->AccessRights |= pn532_packetbuffer[8 + 4] << 8;
+
+  switch(s->Type) {
+    case MIFARE_DESFIRE_STANDARD_FILE:
+    case MIFARE_DESFIRE_BACKUP_FILE:
+      s->Settings.FileSize  = pn532_packetbuffer[8 + 5];
+      s->Settings.FileSize |= pn532_packetbuffer[8 + 6] << 8;
+      s->Settings.FileSize |= pn532_packetbuffer[8 + 7] << 16;
+      break;
+
+    case MIFARE_DESFIRE_VALUE_FILE:
+      s->Settings.LowerLimit  = pn532_packetbuffer[8 + 5];
+      s->Settings.LowerLimit |= pn532_packetbuffer[8 + 6] << 8;
+      s->Settings.LowerLimit |= pn532_packetbuffer[8 + 7] << 16;
+      s->Settings.LowerLimit |= pn532_packetbuffer[8 + 8] << 24;
+
+      s->Settings.UpperLimit  = pn532_packetbuffer[8 +  9];
+      s->Settings.UpperLimit |= pn532_packetbuffer[8 + 10] << 8;
+      s->Settings.UpperLimit |= pn532_packetbuffer[8 + 11] << 16;
+      s->Settings.UpperLimit |= pn532_packetbuffer[8 + 12] << 24;
+
+      s->Settings.LimitedCreditValue  = pn532_packetbuffer[8 + 13];
+      s->Settings.LimitedCreditValue |= pn532_packetbuffer[8 + 14] << 8;
+      s->Settings.LimitedCreditValue |= pn532_packetbuffer[8 + 15] << 16;
+      s->Settings.LimitedCreditValue |= pn532_packetbuffer[8 + 16] << 24;
+
+      s->Settings.LimitedCreditEnabled = pn532_packetbuffer[8 + 17];
+      break;
+
+    case MIFARE_DESFIRE_LINEAR_RECORD_FILE:
+    case MIFARE_DESFIRE_CYCLIC_RECORD_FILE:
+      s->Settings.RecordSize  = pn532_packetbuffer[8 + 5];
+      s->Settings.RecordSize |= pn532_packetbuffer[8 + 6] << 8;
+      s->Settings.RecordSize |= pn532_packetbuffer[8 + 7] << 16;
+
+      s->Settings.MaxRecords  = pn532_packetbuffer[8 +  8];
+      s->Settings.MaxRecords |= pn532_packetbuffer[8 +  9] << 8;
+      s->Settings.MaxRecords |= pn532_packetbuffer[8 + 10] << 16;
+
+      s->Settings.CurrentRecords  = pn532_packetbuffer[8 + 11];
+      s->Settings.CurrentRecords |= pn532_packetbuffer[8 + 12] << 8;
+      s->Settings.CurrentRecords |= pn532_packetbuffer[8 + 13] << 16;
+      break;
+  }
+
+  return 1;
+}
+
+/**************************************************************************/
+/*!
     Select an application according to the given application id.
     Due to the fact that application IDs consist of three bytes,
     a byte array is expected. Only three bytes are read from the
