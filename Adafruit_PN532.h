@@ -231,6 +231,8 @@ class Adafruit_PN532{
   uint8_t desfire_GetFileIDs(uint8_t* ids, uint8_t* len);
   uint8_t desfire_SelectApplication(uint8_t* aid);
   uint8_t desfire_GetFileSettings(uint8_t fid, DESFireFileSetting* s);
+  uint8_t desfire_ReadData(uint8_t fid, uint32_t offset, uint32_t length, uint8_t* dest, uint16_t destLen);
+
 
   // Mifare Ultralight functions
   uint8_t mifareultralight_ReadPage (uint8_t page, uint8_t * buffer);
@@ -238,6 +240,9 @@ class Adafruit_PN532{
   // Help functions to display formatted text
   static void PrintHex(const byte * data, const uint32_t numBytes);
   static void PrintHexChar(const byte * pbtData, const uint32_t numBytes);
+
+ protected:
+  uint8_t desfire_readDataHelper(uint8_t* dest, uint16_t destLen, uint16_t* readBytes);
 
  private:
   uint8_t _ss, _clk, _mosi, _miso;

@@ -52,7 +52,7 @@ byte pn532response_firmwarevers[] = {0x00, 0xFF, 0x06, 0xFA, 0xD5, 0x03};
 // #define PN532DEBUG
 // #define MIFAREDEBUG
 
-#define PN532_PACKBUFFSIZ 64
+#define PN532_PACKBUFFSIZ 96
 byte pn532_packetbuffer[PN532_PACKBUFFSIZ];
 
 /**************************************************************************/
@@ -536,6 +536,126 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
     Adafruit_PN532::PrintHexChar(pn532_packetbuffer, 12);
     #endif
     return 0;
+  }
+
+  return 1;
+}
+
+
+
+/**************************************************************************/
+/*!
+    Read the SPI result and append it to the destination buffer.
+    Catch errors on the way and return 0 if any occurs.
+
+    Appends the number of read bytes to the readBytes pointer value.
+
+    @param  dest            Destination buffer
+    @param  destLen         Length of the buffer in bytes
+    @param  readBytes       Already read bytes
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_readDataHelper(uint8_t* dest, uint16_t destLen, uint16_t* readBytes) {
+  /* The response varies in size, assume worst (records, 18 byte) */
+  readspidata(pn532_packetbuffer, 60+8);
+
+  if(pn532_packetbuffer[7] != 0x00) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Communication error.");
+    #endif
+    return 0;
+  }
+
+  #ifdef MIFAREDEBUG
+  Serial.print("ReadData packet: ");
+  Adafruit_PN532::PrintHex(pn532_packetbuffer, 60+8);
+  #endif
+
+  /* check length, if only one byte real payload exists, this is an error */
+  if(pn532_packetbuffer[3] == 4) {
+    #ifdef MIFAREDEBUG
+    Serial.print("Error received: "); Serial.println(pn532_packetbuffer[8]);
+    #endif
+    return 0;
+  }
+
+  uint8_t dataLength = pn532_packetbuffer[3] - 4;
+
+  if((dataLength+*readBytes) > destLen) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Given destination has not enough space.");
+    #endif
+    return 0;
+  }
+
+  memcpy(dest+*readBytes, pn532_packetbuffer+9, dataLength);
+
+  *readBytes += dataLength;
+
+  return 1;
+}
+
+/**************************************************************************/
+/*!
+    Read the content of a normal/backup file with the given file id
+    from the given offset to the given length.
+
+    The read data is stored in dest, assuming that there's are at least
+    as many bytes as stated in destLen.
+
+    If there are more bytes read and the given buffer is too small,
+    it is assumed that this is an error and 0 is returned.
+
+    @param  fid             File ID
+    @param  offset          Starting offset
+    @param  length          How many bytes shall be read
+    @param  dest            Destination buffer
+    @param  destLen         Length of the buffer in bytes
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_ReadData(uint8_t fid, uint32_t offset,
+  uint32_t length, uint8_t* dest, uint16_t destLen)
+{
+  uint16_t read_bytes = 0;
+
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+  pn532_packetbuffer[1] = 1;          /* Card number */
+  pn532_packetbuffer[2] = 0xbd;
+  pn532_packetbuffer[3] = fid;
+
+  pn532_packetbuffer[4] = offset & 0xff;
+  pn532_packetbuffer[5] = (offset >> 8) & 0xff;
+  pn532_packetbuffer[6] = (offset >> 16) & 0xff;
+
+  pn532_packetbuffer[7] = length & 0xff;
+  pn532_packetbuffer[8] = (length >> 8) & 0xff;
+  pn532_packetbuffer[9] = (length >> 16) & 0xff;
+
+  /* Send the command */
+  if (! sendCommandCheckAck(pn532_packetbuffer, 10))
+  {
+    #ifdef MIFAREDEBUG
+    Serial.println("Failed to receive ACK for read command");
+    #endif
+    return 0;
+  }
+
+  if(!desfire_readDataHelper(dest, destLen, &read_bytes)) {
+    return 0;
+  }
+
+  while(pn532_packetbuffer[8] == 0xAF) {
+    pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+    pn532_packetbuffer[1] = 1;          /* Card number */
+    pn532_packetbuffer[2] = 0xaf;
+
+    if(!desfire_readDataHelper(dest, destLen, &read_bytes)) {
+      return 0;
+    }
   }
 
   return 1;
