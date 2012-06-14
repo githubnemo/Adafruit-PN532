@@ -232,6 +232,7 @@ class Adafruit_PN532{
   uint8_t desfire_SelectApplication(uint8_t* aid);
   uint8_t desfire_GetFileSettings(uint8_t fid, DESFireFileSetting* s);
   uint8_t desfire_ReadData(uint8_t fid, uint32_t offset, uint32_t length, uint8_t* dest, uint16_t destLen);
+  uint8_t desfire_GetKeyVersion(uint8_t* keySettings, uint8_t* noOfKeys);
 
 
   // Mifare Ultralight functions

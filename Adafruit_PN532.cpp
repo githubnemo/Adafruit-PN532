@@ -544,6 +544,46 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
 
 /**************************************************************************/
 /*!
+    Fetch the key version information for the selected application.
+
+    @param  keySettings     Byte to store the key settings in
+    @param  noOfKeys        Number of max. keys supported by the app.
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_GetKeyVersion(uint8_t* keySettings, uint8_t* noOfKeys) {
+  uint16_t read_bytes = 0;
+
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+  pn532_packetbuffer[1] = 1;          /* Card number */
+  pn532_packetbuffer[2] = 0x45;
+
+  if(!desfire_sendAndRead(3, 3)) {
+    return 0;
+  }
+
+  #ifdef MIFAREDEBUG
+  Serial.print("GetKeyVersion packet: ");
+  Adafruit_PN532::PrintHex(pn532_packetbuffer, 10+3);
+  #endif
+
+  if(desfire_getError()) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Error while getting key version.");
+    #endif
+    return 0;
+  }
+
+  *keySettings = pn532_packetbuffer[8+1];
+  *noOfKeys = pn532_packetbuffer[8+2];
+
+  return 1;
+}
+
+
+/**************************************************************************/
+/*!
     Check if the data stored in the pn532_packetbuffer contains an error
     code sent by the DESFire chip and return that error or zero if no
     error is found.
