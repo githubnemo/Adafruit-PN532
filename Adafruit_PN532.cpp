@@ -542,6 +542,76 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
 }
 
 
+/**************************************************************************/
+/*!
+    Check if the data stored in the pn532_packetbuffer contains an error
+    code sent by the DESFire chip and return that error or zero if no
+    error is found.
+
+    @param  dest            Destination buffer
+    @param  destLen         Length of the buffer in bytes
+    @param  readBytes       Already read bytes
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_getError() {
+  if(pn532_packetbuffer[3]-3 == 1 && pn532_packetbuffer[8] != 0x0) {
+    return pn532_packetbuffer[8];
+  }
+  return 0;
+}
+
+
+/**************************************************************************/
+/*!
+    Helper method to send the command prepared in pn532_packetbuffer with the
+    given command length and wait for the amount of data given in the data
+    length parameter.
+
+    The data length is adjusted for the frame sent by the PN532, fetching
+    the preamble and the postamble.
+
+    Communication errors (PN532 status != 0x0) are catched and 0 is returned.
+
+    @param  cmdLen          Command length in bytes
+    @param  dataLen         Payload length in bytes (just the data from the card)
+
+    @returns 1 if everything executed properly, 0 for an error
+*/
+/**************************************************************************/
+uint8_t Adafruit_PN532::desfire_sendAndRead(uint8_t cmdLen, uint8_t dataLen) {
+  /* Send the command */
+  if (! sendCommandCheckAck(pn532_packetbuffer, cmdLen))
+  {
+    #ifdef MIFAREDEBUG
+    Serial.println("Failed to receive ACK for command");
+    #endif
+    return 0;
+  }
+
+  // Packet: 00 00 FF LEN LCS TFI PD0 PD1 ... PDn DCS 00
+  // LEN = Length from [TFI,PDn]
+  // LCS = Length checksum
+  // PD0 = 0x41, PD1 = Communication Status (0x0 => No error)
+  // PD2..PDn = Data from card
+  // DCS = Data checksum
+  //
+  // The dataLen parameter only regards PD2..PDn, so we add
+  // the missing bytes to the length.
+  dataLen += 8 + 2;
+
+  readspidata(pn532_packetbuffer, dataLen);
+
+  if(pn532_packetbuffer[7] != 0x00) {
+    #ifdef MIFAREDEBUG
+    Serial.println("Communication error.");
+    #endif
+    return 0;
+  }
+
+  return 1;
+}
 
 /**************************************************************************/
 /*!
@@ -558,8 +628,8 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t 
 */
 /**************************************************************************/
 uint8_t Adafruit_PN532::desfire_readDataHelper(uint8_t* dest, uint16_t destLen, uint16_t* readBytes) {
-  /* The response varies in size, assume worst (records, 18 byte) */
-  readspidata(pn532_packetbuffer, 60+8);
+  /* The response varies in size, assume worst (60 byte payload + preamble) */
+  readspidata(pn532_packetbuffer, 60+10);
 
   if(pn532_packetbuffer[7] != 0x00) {
     #ifdef MIFAREDEBUG
@@ -685,35 +755,17 @@ uint8_t Adafruit_PN532::desfire_GetFileSettings(uint8_t fid, DESFireFileSetting*
   pn532_packetbuffer[2] = 0xf5;
   pn532_packetbuffer[3] = fid;
 
-  /* Send the command */
-  if (! sendCommandCheckAck(pn532_packetbuffer, 4))
-  {
-    #ifdef MIFAREDEBUG
-    Serial.println("Failed to receive ACK for read command");
-    #endif
-    return 0;
-  }
-
   /* The response varies in size, assume worst (records, 18 byte) */
-  readspidata(pn532_packetbuffer, 18+8);
-
-  if(pn532_packetbuffer[7] != 0x00) {
-    #ifdef MIFAREDEBUG
-    Serial.println("Communication error.");
-    #endif
+  if(!desfire_sendAndRead(4, 18)) {
     return 0;
   }
 
   #ifdef MIFAREDEBUG
   Serial.print("GetFileSettings packet: ");
-  Adafruit_PN532::PrintHex(pn532_packetbuffer, 18+8);
+  Adafruit_PN532::PrintHex(pn532_packetbuffer, 18+10);
   #endif
 
-  /* check length, if only one byte real payload exists, this is an error */
-  if(pn532_packetbuffer[3] <= 5) {
-    #ifdef MIFAREDEBUG
-    Serial.print("Error received: "); Serial.println(pn532_packetbuffer[8]);
-    #endif
+  if(desfire_getError()) {
     return 0;
   }
 
@@ -787,22 +839,7 @@ uint8_t Adafruit_PN532::desfire_SelectApplication(uint8_t* aid) {
 
   memcpy(pn532_packetbuffer+3, aid, 3);
 
-  /* Send the command */
-  if (! sendCommandCheckAck(pn532_packetbuffer, 6))
-  {
-    #ifdef MIFAREDEBUG
-    Serial.println("Failed to receive ACK for read command");
-    #endif
-    return 0;
-  }
-
-  /* The response consists of an status byte (error or OK) + preamble */
-  readspidata(pn532_packetbuffer, 1+8);
-
-  if(pn532_packetbuffer[7] != 0x00) {
-    #ifdef MIFAREDEBUG
-    Serial.println("Communication error.");
-    #endif
+  if(!desfire_sendAndRead(6, 1)) {
     return 0;
   }
 
@@ -836,22 +873,8 @@ uint8_t Adafruit_PN532::desfire_GetFileIDs(uint8_t* ids, uint8_t* len) {
   pn532_packetbuffer[1] = 1;          /* Card number */
   pn532_packetbuffer[2] = 0x6f;
 
-  /* Send the command */
-  if (! sendCommandCheckAck(pn532_packetbuffer, 3))
-  {
-    #ifdef MIFAREDEBUG
-    Serial.println("Failed to receive ACK for read command first");
-    #endif
-    return 0;
-  }
-
-  /* The response may contain 0 to 16 file IDs + Preamble */
-  readspidata(pn532_packetbuffer, 16+8);
-
-  if(pn532_packetbuffer[7] != 0x00) {
-    #ifdef MIFAREDEBUG
-    Serial.println("Communication error.");
-    #endif
+  /* The response may contain 0 to 16 file IDs + status */
+  if(!desfire_sendAndRead(3, 17)) {
     return 0;
   }
 
@@ -894,22 +917,8 @@ uint8_t Adafruit_PN532::desfire_GetApplicationIDs(uint8_t* ids, uint8_t* len) {
   pn532_packetbuffer[1] = 1;          /* Card number */
   pn532_packetbuffer[2] = 0x6a;
 
-  /* Send the command */
-  if (! sendCommandCheckAck(pn532_packetbuffer, 3))
-  {
-    #ifdef MIFAREDEBUG
-    Serial.println("Failed to receive ACK for read command first");
-    #endif
-    return 0;
-  }
-
-  /* The response may contain 0 to 19 AIDs + Preamble */
-  readspidata(pn532_packetbuffer, 19*3+8);
-
-  if(pn532_packetbuffer[7] != 0x00) {
-    #ifdef MIFAREDEBUG
-    Serial.println("Communication error.");
-    #endif
+  /* The response may contain 0 to 19 AIDs + Status byte */
+  if(!desfire_sendAndRead(3, 19*3 + 1)) {
     return 0;
   }
 
@@ -936,13 +945,7 @@ uint8_t Adafruit_PN532::desfire_GetApplicationIDs(uint8_t* ids, uint8_t* len) {
   pn532_packetbuffer[1] = 1;          /* Card number */
   pn532_packetbuffer[2] = 0xaf;
 
-  /* Read the first of three response packets */
-  readspidata(pn532_packetbuffer, 7*3+8);
-
-  if(pn532_packetbuffer[7] != 0x00) {
-    #ifdef MIFAREDEBUG
-    Serial.println("Communication error.");
-    #endif
+  if(!desfire_sendAndRead(3, 7*3 + 1)) {
     return 0;
   }
 
@@ -975,7 +978,7 @@ success:
 uint8_t Adafruit_PN532::desfire_GetVersion(DESFireVersion* v) {
   const uint8_t preamble = 8;
   const uint8_t commands[3] = {0x60, 0xAF, 0xAF};
-  const uint8_t response_size[3] = {8+preamble, 8+preamble, 16+preamble};
+  const uint8_t response_size[3] = {8, 8, 15};
 
   // GetVersion returns three results which need to be fetched.
   for(int i=0; i < 3; i++) {
@@ -985,22 +988,7 @@ uint8_t Adafruit_PN532::desfire_GetVersion(DESFireVersion* v) {
       pn532_packetbuffer[1] = 1;          /* Card number */
       pn532_packetbuffer[2] = commands[i];
 
-      /* Send the command */
-      if (! sendCommandCheckAck(pn532_packetbuffer, 3))
-      {
-        #ifdef MIFAREDEBUG
-        Serial.println("Failed to receive ACK for read command first");
-        #endif
-        return 0;
-      }
-
-      /* Read the first of three response packets */
-      readspidata(pn532_packetbuffer, response_size[i]);
-
-      if(pn532_packetbuffer[7] != 0x00) {
-        #ifdef MIFAREDEBUG
-        Serial.println("Communication error.");
-        #endif
+      if(!desfire_sendAndRead(3, response_size[i])) {
         return 0;
       }
 

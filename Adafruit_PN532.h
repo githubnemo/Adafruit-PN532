@@ -243,6 +243,8 @@ class Adafruit_PN532{
 
  protected:
   uint8_t desfire_readDataHelper(uint8_t* dest, uint16_t destLen, uint16_t* readBytes);
+  uint8_t desfire_sendAndRead(uint8_t cmdLen, uint8_t dataLen);
+  uint8_t desfire_getError();
 
  private:
   uint8_t _ss, _clk, _mosi, _miso;
